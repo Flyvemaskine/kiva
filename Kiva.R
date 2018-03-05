@@ -8,10 +8,10 @@ library(stringr)
 library(foreach)
 library(doMC)
 
-loan_data <- read_csv("data-science-for-good-kiva-crowdfunding/kiva_loans.csv")
-region_data <- read_csv("data-science-for-good-kiva-crowdfunding/kiva_mpi_region_locations.csv")
-loan_theme <- read_csv("data-science-for-good-kiva-crowdfunding/loan_theme_ids.csv")
-loan_theme_by_region <- read_csv("data-science-for-good-kiva-crowdfunding/loan_themes_by_region.csv")
+loan_data <- read_csv("kiva-master/kiva_loans.csv")
+region_data <- read_csv("kiva-master/kiva_mpi_region_locations.csv")
+loan_theme <- read_csv("kiva-master/loan_theme_ids.csv")
+loan_theme_by_region <- read_csv("kiva-master/loan_themes_by_region.csv")
 
 ######################### How many get funded ####################################
 
@@ -22,32 +22,34 @@ loan_data %>%
   mutate(loan_funding_buckets = ifelse(loan_differential == 0, "nothing", 
                                 ifelse(loan_differential== 1, "everything", "something"))) %>%
   group_by(loan_funding_buckets) %>% 
-  summarise(count = n()/length(loan_data$loan_differential)) 
+  summarise(count = n()/length(loan_data$loan_differential))
 # 93% get everthing, 6.5 get something (approx normal dist), 0.5 get nothing
 
 ########################## Men Vs Women ########################################
 
 ### Clean Gender Column
-count_male_female <- function(a_string){
-  # return 2 col df with count male & female
-  data_frame(
-    male = str_match_all(a_string, "\\bmale")[[1]] %>% length(),
-    female = str_match_all(a_string, "female")[[1]] %>% length(),
-    borrower_count = male + female
-  )
-}
-registerDoMC(cores=3)
-male_female_df <- as.list(rep(NA, nrow(loan_data)))
-i <- 1
-male_female_df <- foreach(i = 1:nrow(loan_data)) %dopar%{
-  count_male_female(loan_data$borrower_genders)
-}
+loan_data <- mutate(loan_data,
+                    count_female = str_count(borrower_genders, "female"),
+                    count_male = str_count(borrower_genders, "\\bmale"),
+                    count_borrowers = count_male + count_female)
+
+ggplot(loan_data, aes(x=count_male, y=loan_amount, col=funded_amount)) + geom_point()
+# More people, les likely to receive 0.
+
+mutate(loan_data, more_female_ind = factor(ifelse(count_female > count_male, 1, 0))) %>%
+    group_by(more_female_ind) %>% 
+    summarise(mean_loan_amount = mean(loan_amount),
+              sd_loan_amount = sd(loan_amount),
+              mean_funded_amount = mean(funded_amount),
+              sd_funded_amount = sd(funded_amount))
+# If there are more women than men on the loan, they ask for less, but receive a higher proportion of what they are asking for than men
+
+ggplot(loan_data, aes(x=count_borrowers,y=loan_amount)) + geom_point()
+
+####################### activity ##########################################
+loan_data %>% 
+    group_by(activity) %>% 
+    summarise(mean_loan_amount = mean(loan_amount)) %>%
+    arrange(desc(mean_loan_amount))
 
 
-men_vs_women <- loan_data %>% 
-  group_by(borrower_genders) %>% 
-  summarise(loan_amount = sum(loan_amount),
-            loan_count = n(),
-            loan_amount_total = sum(loan_data$loan_amount),
-            loan_count_toal = length(loan_data$loan_amount))
-table(loan_data$borrower_genders)
